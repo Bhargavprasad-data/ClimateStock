@@ -557,10 +557,13 @@ const Prediction = () => {
 
                   <div>
                     <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <AlertTriangle size={14} /> Volatility
+                      <AlertTriangle size={14} /> Volatility <span style={{fontSize: '10px', opacity: 0.7}}>(Range: 0 to 1)</span>
                     </div>
-                    <div style={{ fontSize: '20px', color: 'var(--color-text-primary)' }}>
+                    <div style={{ fontSize: '20px', color: 'var(--color-text-primary)', display: 'flex', alignItems: 'baseline', gap: '8px' }}>
                       {(result.volatility || 0).toFixed(4)}
+                    </div>
+                    <div style={{ fontSize: '11px', fontWeight: 600, marginTop: '4px', color: result.returnPct >= 0 ? 'var(--color-bullish)' : 'var(--color-bearish)' }}>
+                      {result.returnPct >= 0 ? 'Low Risk (Stable, Min Range)' : 'High Risk (Unstable, Max Range)'}
                     </div>
                   </div>
                 </div>

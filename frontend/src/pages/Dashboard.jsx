@@ -7,23 +7,32 @@ const Dashboard = () => {
   const [data, setData] = useState([]);
   const [climateSummary, setClimateSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [companies, setCompanies] = useState([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState(1);
   const [metrics, setMetrics] = useState({
     avgTemp: 0,
     latestPrice: 0,
     riskScore: 0
   });
+
+  useEffect(() => {
+    axios.get('http://localhost:5000/api/stocks')
+      .then(res => setCompanies(res.data))
+      .catch(err => console.error(err));
+  }, []);
   
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/api/dashboard');
+        const response = await axios.get(`http://localhost:5000/api/dashboard?company_id=${selectedCompanyId}`);
         const dbData = response.data;
         setData(dbData);
         setLoading(false); // ← only stop skeleton when real data arrives
 
         if (dbData.length > 0) {
           const avgT = dbData.reduce((acc, curr) => acc + curr.temperature, 0) / dbData.length;
-          const latestP = dbData[dbData.length - 1].stockPrice || 0;
+          const validStockPrices = dbData.filter(d => d.stockPrice !== null);
+          const latestP = validStockPrices.length > 0 ? validStockPrices[validStockPrices.length - 1].stockPrice : 0;
           
           // Calculate dynamic correlation risk
           let calculatedRisk = 4.0 + (Math.max(0, avgT - 30) * 0.4);
@@ -43,28 +52,17 @@ const Dashboard = () => {
     fetchData();
     const intervalId = setInterval(fetchData, 8000);
     return () => clearInterval(intervalId);
-  }, []);
+  }, [selectedCompanyId]);
 
-  // Fetch full-table climate summary for accurate pie chart
   useEffect(() => {
-    const fetchSummary = async () => {
-      try {
-        const res = await axios.get('http://localhost:5000/api/climate-summary');
-        setClimateSummary(res.data);
-      } catch (err) {
-        console.error('Error fetching climate summary', err);
-      }
-    };
-    fetchSummary();
-    const summaryInterval = setInterval(fetchSummary, 30000); // refresh every 30s
-    return () => clearInterval(summaryInterval);
+    // Legacy full-table fetch removed. Pie chart now dynamically derives from graph 'data' directly.
   }, []);
 
-  // Use full-table counts ONLY when real data is available
-  const hasRealData    = climateSummary !== null;
-  const heatwaveCount  = hasRealData ? (climateSummary.heatwave_days || 0) : 0;
-  const normalCount    = hasRealData ? (climateSummary.normal_days   || 0) : 0;
-  const totalRecords   = hasRealData ? (climateSummary.total_records || 0) : 0;
+  // Use the live 30-day window 'data' directly for true dynamic scrolling
+  const hasRealData    = data.length > 0;
+  const heatwaveCount  = hasRealData ? data.filter(d => d.heatwave_flag).length : 0;
+  const normalCount    = hasRealData ? data.length - heatwaveCount : 0;
+  const totalRecords   = hasRealData ? data.length : 0;
 
   // Only build meaningful pie data when backend has responded
   const pieData = hasRealData
@@ -88,7 +86,7 @@ const Dashboard = () => {
       if (payload.length >= 2) {
         return (
           <div className="custom-tooltip">
-            <p style={{ margin: '0 0 8px 0', fontWeight: 'bold' }}>{label}</p>
+            <p style={{ margin: '0 0 8px 0', fontWeight: 'bold' }}>{payload[0].payload.fullDate || label}</p>
             <p style={{ margin: 0, color: 'var(--color-accent)' }}>
               Temperature: {payload[0].value}°C
             </p>
@@ -190,11 +188,33 @@ const Dashboard = () => {
     );
   }
 
+  const selectedCompany = companies.find(c => c.id === parseInt(selectedCompanyId));
+  const activeCompanyName = selectedCompany ? selectedCompany.name : 'Reliance Energy';
+
   return (
     <div className="dashboard">
-      <div className="page-header">
-        <h1 className="page-title">Market Overview</h1>
-        <p className="page-subtitle">Analyze the historical impact of regional temperatures on energy stocks.</p>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+        <div>
+          <h1 className="page-title">Market Overview</h1>
+          <p className="page-subtitle">Analyze the historical impact of regional temperatures on energy stocks.</p>
+        </div>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <label style={{ fontSize: '14px', color: 'var(--color-text-secondary)', fontWeight: 500 }}>Target Stock:</label>
+          <select 
+            value={selectedCompanyId} 
+            onChange={(e) => {
+              setLoading(true);
+              setSelectedCompanyId(e.target.value);
+            }}
+            className="input-field"
+            style={{ width: '220px', padding: '10px 14px', cursor: 'pointer' }}
+          >
+            {companies.map(c => (
+              <option key={c.id} value={c.id}>{c.symbol} ({c.name})</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="grid-3" style={{ marginTop: '32px' }}>
@@ -214,7 +234,9 @@ const Dashboard = () => {
              <Activity size={32} />
           </div>
           <div className="info">
-             <div className="title">Reliance Energy</div>
+             <div className="title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>
+               {activeCompanyName}
+             </div>
              <div className="value">₹{metrics.latestPrice}</div>
              <div className="subtitle">Latest Logged Price</div>
           </div>
@@ -254,7 +276,7 @@ const Dashboard = () => {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--glass-border)" vertical={false} />
                 <Tooltip content={<CustomTooltip />} />
                 <Area yAxisId="left" type="monotone" dataKey="temperature" stroke="var(--color-accent)" fillOpacity={1} fill="url(#colorTemp)" />
-                <Area yAxisId="right" type="monotone" dataKey="stockPrice" stroke="var(--color-bullish)" fillOpacity={1} fill="url(#colorStock)" />
+                <Area yAxisId="right" type="monotone" dataKey="stockPrice" stroke="var(--color-bullish)" fillOpacity={1} fill="url(#colorStock)" connectNulls />
               </AreaChart>
             </ResponsiveContainer>
           </div>

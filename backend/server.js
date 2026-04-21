@@ -76,7 +76,7 @@ async function seedFromCSV() {
     headers.forEach((h, i) => { col[h.trim()] = i; });
 
     console.log(`⌛ Inserting ${lines.length - 1} records with all ${headers.length} features...`);
-    
+
     await pool.query('BEGIN');
     const companyCache = {};
     let processed = 0;
@@ -85,26 +85,26 @@ async function seedFromCSV() {
       const parts = lines[i].split(',');
       if (parts.length < headers.length) continue;
 
-      const dateRaw       = parts[col['Date']]?.trim();
-      const closeRaw      = parseFloat(parts[col['CLOSE']]) || 0;
-      const stockRaw      = parts[col['Stock']]?.trim();
-      const tempRaw       = parseFloat(parts[col['Temperature']]) || 0;
-      const hwRaw         = parseInt(parts[col['Heatwave']]) === 1;
-      const returnPct     = parseFloat(parts[col['Return']]) || 0;
-      const cdd           = parseFloat(parts[col['CDD']]) || 0;
-      const cdd7          = parseFloat(parts[col['CDD_7']]) || 0;
-      const tempAnomaly   = parseFloat(parts[col['Temp_Anomaly']]) || 0;
-      const cddLag1       = parseFloat(parts[col['CDD_Lag1']]) || 0;
-      const cddLag3       = parseFloat(parts[col['CDD_Lag3']]) || 0;
-      const returnLag1    = parseFloat(parts[col['Return_Lag1']]) || 0;
-      const returnLag3    = parseFloat(parts[col['Return_Lag3']]) || 0;
-      const returnLag5    = parseFloat(parts[col['Return_Lag5']]) || 0;
-      const ma5           = parseFloat(parts[col['MA_5']]) || 0;
-      const volatility    = parseFloat(parts[col['Volatility']]) || 0;
-      const demandTrend   = parseFloat(parts[col['Demand_Trend']]) || 0;
-      const trend         = parseFloat(parts[col['Trend']]) || 0;
-      const volChange     = parseFloat(parts[col['Volatility_Change']]) || 0;
-      const direction     = parseInt(parts[col['Direction']]) || 0;
+      const dateRaw = parts[col['Date']]?.trim();
+      const closeRaw = parseFloat(parts[col['CLOSE']]) || 0;
+      const stockRaw = parts[col['Stock']]?.trim();
+      const tempRaw = parseFloat(parts[col['Temperature']]) || 0;
+      const hwRaw = parseInt(parts[col['Heatwave']]) === 1;
+      const returnPct = parseFloat(parts[col['Return']]) || 0;
+      const cdd = parseFloat(parts[col['CDD']]) || 0;
+      const cdd7 = parseFloat(parts[col['CDD_7']]) || 0;
+      const tempAnomaly = parseFloat(parts[col['Temp_Anomaly']]) || 0;
+      const cddLag1 = parseFloat(parts[col['CDD_Lag1']]) || 0;
+      const cddLag3 = parseFloat(parts[col['CDD_Lag3']]) || 0;
+      const returnLag1 = parseFloat(parts[col['Return_Lag1']]) || 0;
+      const returnLag3 = parseFloat(parts[col['Return_Lag3']]) || 0;
+      const returnLag5 = parseFloat(parts[col['Return_Lag5']]) || 0;
+      const ma5 = parseFloat(parts[col['MA_5']]) || 0;
+      const volatility = parseFloat(parts[col['Volatility']]) || 0;
+      const demandTrend = parseFloat(parts[col['Demand_Trend']]) || 0;
+      const trend = parseFloat(parts[col['Trend']]) || 0;
+      const volChange = parseFloat(parts[col['Volatility_Change']]) || 0;
+      const direction = parseInt(parts[col['Direction']]) || 0;
 
       if (!stockRaw || !dateRaw) continue;
 
@@ -131,8 +131,8 @@ async function seedFromCSV() {
       await pool.query(
         `INSERT INTO stock_data (company_id, date, open_price, close_price, high_price, low_price, volume) 
          VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
-        [compId, dateRaw, closeRaw, closeRaw, closeRaw * 1.01, closeRaw * 0.99, 
-         Math.floor(Math.random() * 5000000 + 1000000)]
+        [compId, dateRaw, closeRaw, closeRaw, closeRaw * 1.01, closeRaw * 0.99,
+          Math.floor(Math.random() * 5000000 + 1000000)]
       );
 
       // Full feature table: climate_stock_data
@@ -144,8 +144,8 @@ async function seedFromCSV() {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
          ON CONFLICT (company_id, date) DO NOTHING`,
         [compId, dateRaw, closeRaw, returnPct, stockRaw, tempRaw, cdd, cdd7, tempAnomaly,
-         hwRaw ? 1 : 0, cddLag1, cddLag3, returnLag1, returnLag3, returnLag5, ma5, volatility,
-         demandTrend, trend, volChange, direction]
+          hwRaw ? 1 : 0, cddLag1, cddLag3, returnLag1, returnLag3, returnLag5, ma5, volatility,
+          demandTrend, trend, volChange, direction]
       );
 
       processed++;
@@ -200,26 +200,36 @@ app.get('/api/temperature', async (req, res) => {
 // Fetch combined dashboard data
 app.get('/api/dashboard', async (req, res) => {
   try {
-    // Implement time-based offset streaming (shifts 1 record right every 8 seconds)
+    const { company_id } = req.query;
+    const cid = company_id ? parseInt(company_id) : 1;
+
+    // 1. Get the actual length of data for this specific company so the offset wraps safely
+    const countRes = await pool.query('SELECT COUNT(*) FROM stock_data WHERE company_id = $1', [cid]);
+    const totalRows = parseInt(countRes.rows[0].count) || 100;
+
+    // 2. Implement time-based offset streaming wrapping cleanly within the company's data length
     const elapsedSeconds = Math.floor((Date.now() - START_TIME) / 8000);
-    const offset = elapsedSeconds % 9000; // Prevent out of bounds over 10k rows
+    let offset = elapsedSeconds % (totalRows > 30 ? totalRows - 30 : 1);
 
-    const tempResult = await pool.query(`SELECT * FROM temperature_data ORDER BY date ASC LIMIT 30 OFFSET ${offset}`);
-    const stockResult = await pool.query(`SELECT * FROM stock_data WHERE company_id = 1 ORDER BY date ASC LIMIT 30 OFFSET ${offset}`);
-    
-    // Values are now fetched sequentially slicing forward
-    const tempRows = tempResult.rows;
-    const stockRows = stockResult.rows;
+    // 3. Drive the timeline from the company's dataset, pulling in the temperature for those days
+    const query = `
+      SELECT s.date, t.avg_temperature, t.heatwave_flag, s.close_price
+      FROM stock_data s
+      LEFT JOIN temperature_data t ON s.date = t.date
+      WHERE s.company_id = $1
+      ORDER BY s.date ASC
+      LIMIT 30 OFFSET $2
+    `;
+    const result = await pool.query(query, [cid, offset]);
 
-    // Merge by index synchronously to guarantee latest sequence charts
-    const combined = tempRows.map((tRow, i) => {
-      const sRow = stockRows[i];
+    const combined = result.rows.map(row => {
       return {
-        date: new Date(tRow.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        temperature: parseFloat(tRow.avg_temperature),
-        heatwave_flag: tRow.heatwave_flag,
-        stockPrice: sRow ? parseFloat(sRow.close_price) : null,
-      }
+        date: new Date(row.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        fullDate: new Date(row.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
+        temperature: parseFloat(row.avg_temperature),
+        heatwave_flag: row.heatwave_flag,
+        stockPrice: row.close_price ? parseFloat(row.close_price) : null,
+      };
     });
 
     res.json(combined);
@@ -249,24 +259,24 @@ app.post('/api/predict', async (req, res) => {
 
       const priceQ = await pool.query(`SELECT close_price FROM stock_data WHERE company_id = $1 ORDER BY date DESC LIMIT 6`, [company_id]);
       if (priceQ.rows.length >= 6) {
-         const p0 = parseFloat(priceQ.rows[0].close_price);
-         const p1 = parseFloat(priceQ.rows[1].close_price);
-         const p3 = parseFloat(priceQ.rows[3].close_price);
-         const p5 = parseFloat(priceQ.rows[5].close_price);
-         
-         basePrice = p0;
-         const sum = priceQ.rows.slice(0, 5).reduce((acc, row) => acc + parseFloat(row.close_price), 0);
-         ma_5 = sum / 5;
-         
-         lag1 = (p0 - p1) / p1;
-         lag3 = (p0 - p3) / p3;
-         lag5 = (p0 - p5) / p5;
+        const p0 = parseFloat(priceQ.rows[0].close_price);
+        const p1 = parseFloat(priceQ.rows[1].close_price);
+        const p3 = parseFloat(priceQ.rows[3].close_price);
+        const p5 = parseFloat(priceQ.rows[5].close_price);
+
+        basePrice = p0;
+        const sum = priceQ.rows.slice(0, 5).reduce((acc, row) => acc + parseFloat(row.close_price), 0);
+        ma_5 = sum / 5;
+
+        lag1 = (p0 - p1) / p1;
+        lag3 = (p0 - p3) / p3;
+        lag5 = (p0 - p5) / p5;
       } else if (priceQ.rows.length > 0) {
-         basePrice = parseFloat(priceQ.rows[0].close_price);
-         const sum = priceQ.rows.reduce((acc, row) => acc + parseFloat(row.close_price), 0);
-         ma_5 = sum / priceQ.rows.length;
+        basePrice = parseFloat(priceQ.rows[0].close_price);
+        const sum = priceQ.rows.reduce((acc, row) => acc + parseFloat(row.close_price), 0);
+        ma_5 = sum / priceQ.rows.length;
       }
-    } catch(e) {
+    } catch (e) {
       console.error("Failed to map fallback prices:", e);
     }
   }
@@ -283,11 +293,11 @@ app.post('/api/predict', async (req, res) => {
 
   // Call Python script
   const scriptPath = path.join(__dirname, 'predict.py');
-  
+
   // Important: ensure python is in PATH or specify python3
   const escapedPayload = payload.replace(/"/g, '\\"');
   const command = `python "${scriptPath}" "${escapedPayload}"`;
-  
+
   exec(command, async (error, stdout, stderr) => {
     if (error) {
       console.error(`exec error: ${error}`);
@@ -297,13 +307,13 @@ app.post('/api/predict', async (req, res) => {
     try {
       // The python script should print a JSON response
       const output = JSON.parse(stdout);
-      
+
       if (!output.success) {
         return res.status(500).json({ error: 'Failed inside python script', details: output.error });
       }
 
       const predictedPrice = output.prediction;
-      
+
       // ── Trend: prefer RF classifier output, fallback to price heuristic ──
       let trend = 'Neutral';
       if (output.rf_trend) {
@@ -329,7 +339,7 @@ app.post('/api/predict', async (req, res) => {
 
       // Ensure we ALWAYS insert the prediction to log it for Insights
       const finalCid = company_id ? parseInt(company_id) : 1;
-      
+
       await pool.query(
         `INSERT INTO predictions (company_id, date, input_temperature, predicted_price, predicted_trend, confidence_score)
          VALUES ($1, CURRENT_DATE, $2, $3, $4, $5)`,
@@ -350,7 +360,7 @@ app.post('/api/predict', async (req, res) => {
         await pool.query(
           `INSERT INTO stock_data (company_id, date, open_price, close_price, high_price, low_price, volume)
            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [finalCid, nextDate, basePrice, predictedPrice, Math.max(predictedPrice, basePrice) * 1.01, Math.min(predictedPrice, basePrice) * 0.99, parseInt(Math.random()*5000000 + 1000000)]
+          [finalCid, nextDate, basePrice, predictedPrice, Math.max(predictedPrice, basePrice) * 1.01, Math.min(predictedPrice, basePrice) * 0.99, parseInt(Math.random() * 5000000 + 1000000)]
         );
       } catch (insertErr) {
         console.error("Simulation integration error:", insertErr); // Non-fatal, just logs
@@ -358,7 +368,7 @@ app.post('/api/predict', async (req, res) => {
 
       // Calculate return relative to basePrice
       const returnPct = ((predictedPrice - basePrice) / basePrice) * 100;
-      
+
       // Calculate volatility score
       let vol = 0.0150 + (Math.abs(30 - parseFloat(temperature)) * 0.0015);
       if (heatwave_flag) vol += 0.0250;
@@ -456,34 +466,34 @@ app.get('/api/insights', async (req, res) => {
 
     res.json({
       temperature: {
-        avg:        parseFloat(tr.avg_temp),
-        max:        parseFloat(tr.max_temp),
-        min:        parseFloat(tr.min_temp),
-        stddev:     parseFloat(tr.stddev_temp),
-        totalDays:  tr.total_records,
+        avg: parseFloat(tr.avg_temp),
+        max: parseFloat(tr.max_temp),
+        min: parseFloat(tr.min_temp),
+        stddev: parseFloat(tr.stddev_temp),
+        totalDays: tr.total_records,
         heatwaveDays: tr.heatwave_days,
-        normalDays:   tr.normal_days,
+        normalDays: tr.normal_days,
         heatwaveRatioPct: parseFloat(heatwaveRatio)
       },
       stockPrice: {
-        avgAll:          parseFloat(sr.avg_price_all),
-        avgHeatwave:     parseFloat(sr.avg_price_heatwave),
-        avgNormal:       parseFloat(sr.avg_price_normal),
-        max:             parseFloat(sr.max_price),
-        min:             parseFloat(sr.min_price),
-        stddev:          parseFloat(sr.stddev_price),
-        heatwaveImpactPct:  heatwavePriceImpact !== null ? parseFloat(heatwavePriceImpact) : null,
-        highTempImpactPct:  highTempPriceImpact !== null ? parseFloat(highTempPriceImpact) : null,
-        volatilityPct:      priceVolatilityPct  !== null ? parseFloat(priceVolatilityPct)  : null,
+        avgAll: parseFloat(sr.avg_price_all),
+        avgHeatwave: parseFloat(sr.avg_price_heatwave),
+        avgNormal: parseFloat(sr.avg_price_normal),
+        max: parseFloat(sr.max_price),
+        min: parseFloat(sr.min_price),
+        stddev: parseFloat(sr.stddev_price),
+        heatwaveImpactPct: heatwavePriceImpact !== null ? parseFloat(heatwavePriceImpact) : null,
+        highTempImpactPct: highTempPriceImpact !== null ? parseFloat(highTempPriceImpact) : null,
+        volatilityPct: priceVolatilityPct !== null ? parseFloat(priceVolatilityPct) : null,
       },
       predictions: {
-        total:         pr.total_preds,
-        bullish:       pr.bullish_count,
-        bearish:       pr.bearish_count,
-        neutral:       pr.neutral_count,
+        total: pr.total_preds,
+        bullish: pr.bullish_count,
+        bearish: pr.bearish_count,
+        neutral: pr.neutral_count,
         avgConfidence: parseFloat(pr.avg_confidence),
         maxConfidence: parseFloat(pr.max_confidence),
-        avgInputTemp:  parseFloat(pr.avg_pred_temp)
+        avgInputTemp: parseFloat(pr.avg_pred_temp)
       }
     });
   } catch (error) {
@@ -514,7 +524,7 @@ app.get('/api/climate-summary', async (req, res) => {
 // ── Current & Historical Weather Route ──────────────────────────────────────────
 app.get('/api/weather', async (req, res) => {
   const apiKey = process.env.WEATHER_API_KEY;
-  const city   = req.query.city || process.env.WEATHER_CITY || 'Mumbai';
+  const city = req.query.city || process.env.WEATHER_CITY || 'Mumbai';
   const queryDate = req.query.date; // e.g., 'YYYY-MM-DD'
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -532,44 +542,44 @@ app.get('/api/weather', async (req, res) => {
         const row = dbRes.rows[0];
         const reqDate = new Date(queryDate);
         return res.json({
-          source:      'database',
-          city:        city !== 'Mumbai' ? city : 'Indian Region',
-          country:     'IN',
+          source: 'database',
+          city: city !== 'Mumbai' ? city : 'Indian Region',
+          country: 'IN',
           temperature: parseFloat(row.avg_temperature),
-          heatwave:    row.heatwave_flag,
-          feelsLike:   parseFloat(row.avg_temperature) + 2.5,
-          humidity:    '--',
+          heatwave: row.heatwave_flag,
+          feelsLike: parseFloat(row.avg_temperature) + 2.5,
+          humidity: '--',
           description: row.heatwave_flag ? 'Historical Heatwave' : 'Historical Data',
-          windSpeed:   '--',
-          date:        queryDate,
-          dateLabel:   reqDate.toLocaleDateString('en-IN', {
-                         weekday: 'long', year: 'numeric',
-                         month:   'long', day:  'numeric'
-                       })
+          windSpeed: '--',
+          date: queryDate,
+          dateLabel: reqDate.toLocaleDateString('en-IN', {
+            weekday: 'long', year: 'numeric',
+            month: 'long', day: 'numeric'
+          })
         });
       } else {
         // If no data exists for the selected date, provide a simulated realistic climate value
         const reqDate = new Date(queryDate);
         const month = reqDate.getMonth(); // 0-11
         // Summer months (April-June) are hotter
-        let baseTemp = 32 + (Math.sin(((month - 3) / 12) * Math.PI) * 8); 
+        let baseTemp = 32 + (Math.sin(((month - 3) / 12) * Math.PI) * 8);
         let isHeatwave = baseTemp > 38 && Math.random() > 0.5;
-        
+
         return res.json({
-          source:      'simulated',
-          city:        city !== 'Mumbai' ? city : 'Indian Region',
-          country:     'IN',
+          source: 'simulated',
+          city: city !== 'Mumbai' ? city : 'Indian Region',
+          country: 'IN',
           temperature: parseFloat(baseTemp.toFixed(1)),
-          heatwave:    isHeatwave,
-          feelsLike:   parseFloat((baseTemp + 2).toFixed(1)),
-          humidity:    '45',
+          heatwave: isHeatwave,
+          feelsLike: parseFloat((baseTemp + 2).toFixed(1)),
+          humidity: '45',
           description: 'Simulated Climate Data',
-          windSpeed:   '--',
-          date:        queryDate,
-          dateLabel:   reqDate.toLocaleDateString('en-IN', {
-                         weekday: 'long', year: 'numeric',
-                         month:   'long', day:  'numeric'
-                       })
+          windSpeed: '--',
+          date: queryDate,
+          dateLabel: reqDate.toLocaleDateString('en-IN', {
+            weekday: 'long', year: 'numeric',
+            month: 'long', day: 'numeric'
+          })
         });
       }
     } catch (e) {
@@ -597,19 +607,19 @@ app.get('/api/weather', async (req, res) => {
         }
         const now = new Date();
         res.json({
-          source:      'live',
-          city:        data.name,
-          country:     data.sys.country,
+          source: 'live',
+          city: data.name,
+          country: data.sys.country,
           temperature: parseFloat(data.main.temp.toFixed(1)),
-          feelsLike:   parseFloat(data.main.feels_like.toFixed(1)),
-          humidity:    data.main.humidity,
+          feelsLike: parseFloat(data.main.feels_like.toFixed(1)),
+          humidity: data.main.humidity,
           description: data.weather[0].description,
-          windSpeed:   data.wind.speed,
-          date:        now.toISOString(),                         // ISO for frontend formatting
-          dateLabel:   now.toLocaleDateString('en-IN', {
-                         weekday: 'long', year: 'numeric',
-                         month:   'long', day:  'numeric'
-                       })
+          windSpeed: data.wind.speed,
+          date: now.toISOString(),                         // ISO for frontend formatting
+          dateLabel: now.toLocaleDateString('en-IN', {
+            weekday: 'long', year: 'numeric',
+            month: 'long', day: 'numeric'
+          })
         });
       } catch (e) {
         res.status(500).json({ error: 'Failed to parse weather response', raw });
@@ -659,8 +669,8 @@ app.post('/api/chat', async (req, res) => {
 
     const predSummary = liveContext.recentPredictions?.length > 0
       ? liveContext.recentPredictions
-          .map(p => `${p.predicted_trend} (${p.confidence_score}% conf @ ${p.input_temperature}°C)`)
-          .join(', ')
+        .map(p => `${p.predicted_trend} (${p.confidence_score}% conf @ ${p.input_temperature}°C)`)
+        .join(', ')
       : 'No recent predictions yet';
 
     // ─── 2. System Prompt — ClimateIQ Persona ───────────────────────────────
@@ -707,23 +717,23 @@ GUIDELINES:
     const { execFile } = require('child_process');
 
     const pyProcess = execFile('python', [scriptPath], (error, stdout, stderr) => {
-        if (error) {
-          console.error("Python Chat Script Execution Error:", error);
-          return res.status(500).json({ error: 'AI chat service error. Please ensure Python is installed.', details: stderr });
-        }
+      if (error) {
+        console.error("Python Chat Script Execution Error:", error);
+        return res.status(500).json({ error: 'AI chat service error. Please ensure Python is installed.', details: stderr });
+      }
 
-        try {
-          const result = JSON.parse(stdout);
-          if (result.success) {
-            res.json({ reply: result.reply });
-          } else {
-            console.error("Python Chat Script API Error:", result.error);
-            res.status(500).json({ error: 'AI Error', details: result.error });
-          }
-        } catch (parseErr) {
-          console.error("Failed to parse Python chat script output:", stdout);
-          res.status(500).json({ error: 'Failed to parse AI output', details: stdout });
+      try {
+        const result = JSON.parse(stdout);
+        if (result.success) {
+          res.json({ reply: result.reply });
+        } else {
+          console.error("Python Chat Script API Error:", result.error);
+          res.status(500).json({ error: 'AI Error', details: result.error });
         }
+      } catch (parseErr) {
+        console.error("Failed to parse Python chat script output:", stdout);
+        res.status(500).json({ error: 'Failed to parse AI output', details: stdout });
+      }
     });
 
     pyProcess.stdin.write(JSON.stringify(inputData));
@@ -731,8 +741,8 @@ GUIDELINES:
 
   } catch (err) {
     console.error('🔥 CRITICAL CHAT ERROR:', err);
-    res.status(500).json({ 
-      error: 'AI chat setup error', 
+    res.status(500).json({
+      error: 'AI chat setup error',
       details: err.message || 'Unknown error occurred'
     });
   }
