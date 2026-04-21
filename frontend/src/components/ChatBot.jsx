@@ -5,6 +5,9 @@ import './ChatBot.css';
 
 const SUGGESTIONS = [
   'What does a heatwave mean for energy stocks?',
+  'Explain how the Dual-Model engine works.',
+  'How do you calculate the Safe Range?',
+  'Identify signs of a Volatility Spike.',
   'Explain the current temperature risk level.',
   'Which company is most climate-sensitive?',
   'How does the XGBoost model work here?',
@@ -164,9 +167,9 @@ const ChatBot = () => {
                   }
                   .chat-sk {
                     background: linear-gradient(90deg,
-                      var(--glass-border) 25%,
-                      rgba(255,255,255,0.08) 50%,
-                      var(--glass-border) 75%
+                      rgba(130, 130, 130, 0.1) 25%,
+                      rgba(130, 130, 130, 0.25) 50%,
+                      rgba(130, 130, 130, 0.1) 75%
                     );
                     background-size: 600px 100%;
                     animation: shimmer 1.6s infinite linear;

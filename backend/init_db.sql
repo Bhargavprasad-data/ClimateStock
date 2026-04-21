@@ -1,71 +1,86 @@
+-- ============================================================================
+-- ClimateStock India – Full Database Schema
+-- Database: Stockmarket (from .env DB_NAME)
+-- ============================================================================
+
+-- Drop in reverse dependency order
 DROP TABLE IF EXISTS predictions CASCADE;
 DROP TABLE IF EXISTS stock_data CASCADE;
 DROP TABLE IF EXISTS temperature_data CASCADE;
+DROP TABLE IF EXISTS climate_stock_data CASCADE;
 DROP TABLE IF EXISTS companies CASCADE;
 
+-- ── Companies ────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS companies (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     symbol VARCHAR(50) UNIQUE NOT NULL,
-    sector VARCHAR(100)
+    sector VARCHAR(100) DEFAULT 'Energy'
 );
 
+-- ── Legacy Temperature Data (kept for dashboard/insights compatibility) ─────
 CREATE TABLE IF NOT EXISTS temperature_data (
     id SERIAL PRIMARY KEY,
     date DATE NOT NULL,
-    region VARCHAR(100),
-    avg_temperature NUMERIC(5,2),
+    region VARCHAR(100) DEFAULT 'India',
+    avg_temperature NUMERIC(8,4),
     heatwave_flag BOOLEAN DEFAULT FALSE
 );
 
+-- ── Legacy Stock Data (kept for dashboard/insights compatibility) ────────────
 CREATE TABLE IF NOT EXISTS stock_data (
     id SERIAL PRIMARY KEY,
     company_id INTEGER REFERENCES companies(id),
     date DATE NOT NULL,
-    open_price NUMERIC(10,2),
-    close_price NUMERIC(10,2),
-    high_price NUMERIC(10,2),
-    low_price NUMERIC(10,2),
-    volume BIGINT
+    open_price NUMERIC(15,6),
+    close_price NUMERIC(15,6),
+    high_price NUMERIC(15,6),
+    low_price NUMERIC(15,6),
+    volume BIGINT DEFAULT 0
 );
 
+-- ── Full Climate-Stock Feature Data (all 20 CSV columns) ────────────────────
+-- This table stores the complete processed dataset for ML model usage.
+CREATE TABLE IF NOT EXISTS climate_stock_data (
+    id SERIAL PRIMARY KEY,
+    company_id INTEGER REFERENCES companies(id),
+    date DATE NOT NULL,
+    close_price NUMERIC(15,6),
+    return_pct NUMERIC(20,16),
+    stock VARCHAR(50),
+    temperature NUMERIC(8,4),
+    cdd NUMERIC(20,16),
+    cdd_7 NUMERIC(20,16),
+    temp_anomaly NUMERIC(20,16),
+    heatwave INTEGER DEFAULT 0,
+    cdd_lag1 NUMERIC(20,16),
+    cdd_lag3 NUMERIC(20,16),
+    return_lag1 NUMERIC(20,16),
+    return_lag3 NUMERIC(20,16),
+    return_lag5 NUMERIC(20,16),
+    ma_5 NUMERIC(20,16),
+    volatility NUMERIC(20,16),
+    demand_trend NUMERIC(20,16),
+    trend NUMERIC(20,16),
+    volatility_change NUMERIC(20,16),
+    direction INTEGER DEFAULT 0,
+    UNIQUE(company_id, date)
+);
+
+-- ── Predictions Log ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS predictions (
     id SERIAL PRIMARY KEY,
     company_id INTEGER REFERENCES companies(id),
     date DATE NOT NULL,
-    input_temperature NUMERIC(5,2),
-    predicted_price NUMERIC(10,2),
+    input_temperature NUMERIC(8,4),
+    predicted_price NUMERIC(15,6),
     predicted_trend VARCHAR(50),
     confidence_score NUMERIC(5,2)
 );
 
--- Seed some initial data
-INSERT INTO companies (name, symbol, sector)
-VALUES 
-    ('Reliance Industries', 'RELIANCE', 'Energy'),
-    ('Tata Power', 'TATAPOWER', 'Energy'),
-    ('Adani Green Energy', 'ADANIGREEN', 'Energy')
-ON CONFLICT (symbol) DO NOTHING;
-
--- Insert 30 days of dynamic temperature data
-INSERT INTO temperature_data (date, region, avg_temperature, heatwave_flag)
-SELECT 
-    CURRENT_DATE - i,
-    'Mumbai',
-    ROUND(CAST(28 + random() * 10 AS NUMERIC), 1), -- random between 28 and 38
-    random() > 0.8 -- 20% chance of heatwave
-FROM generate_series(1, 30) AS i
-ON CONFLICT DO NOTHING;
-
--- Insert 30 days of dynamic stock data for Reliance (company_id=1)
-INSERT INTO stock_data (company_id, date, open_price, close_price, high_price, low_price, volume)
-SELECT 
-    1,
-    CURRENT_DATE - i,
-    ROUND(CAST(2400 + random() * 200 AS NUMERIC), 2),
-    ROUND(CAST(2400 + random() * 200 AS NUMERIC), 2),
-    ROUND(CAST(2600 + random() * 50 AS NUMERIC), 2),
-    ROUND(CAST(2350 + random() * 50 AS NUMERIC), 2),
-    CAST(1000000 + random() * 5000000 AS BIGINT)
-FROM generate_series(1, 30) AS i
-ON CONFLICT DO NOTHING;
+-- ── Indexes for performance ─────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_climate_stock_date ON climate_stock_data(date);
+CREATE INDEX IF NOT EXISTS idx_climate_stock_company ON climate_stock_data(company_id);
+CREATE INDEX IF NOT EXISTS idx_temp_data_date ON temperature_data(date);
+CREATE INDEX IF NOT EXISTS idx_stock_data_date ON stock_data(date);
+CREATE INDEX IF NOT EXISTS idx_stock_data_company ON stock_data(company_id);

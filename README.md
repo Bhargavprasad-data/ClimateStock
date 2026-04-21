@@ -47,8 +47,9 @@ Market/
 │   ├── index.html
 │   └── package.json
 │
-├── final_processed_data .csv       # Historical climate + stock dataset
-├── xgb_stock_prediction_model_raw.pkl  # Pre-trained XGBoost model
+├── final_processed_data.csv        # Historical climate + stock dataset
+├── xgb_stock_prediction_model_raw.pkl  # Pre-trained XGBoost regressor (price prediction)
+├── rf_classifier_20k_model.pkl     # Pre-trained Random Forest classifier (trend classification)
 ├── inspect_model.py                # Utility to inspect model features
 └── README.md                       # This file
 ```
@@ -124,11 +125,19 @@ The PostgreSQL database `Stockmarket` has three core tables:
 
 ---
 
-## 🤖 ML Model — XGBoost
+## 🤖 ML Models — Dual-Model Architecture
 
+The prediction engine uses **two complementary ML models** working together:
+
+### 1. XGBoost Regressor — Price Prediction
 **Model file:** `xgb_stock_prediction_model_raw.pkl`
 
-The model was trained on Indian energy sector historical data combining climate and financial features. It predicts the **next-day stock closing price**.
+Trained on Indian energy sector historical data combining climate and financial features. Predicts the **next-day stock closing price (₹)**.
+
+### 2. Random Forest Classifier — Trend Classification
+**Model file:** `rf_classifier_20k_model.pkl`
+
+A 20,000-tree Random Forest classifier that predicts the **market trend direction** (Bullish / Bearish / Neutral) and provides **probability-based confidence scores** via `predict_proba`.
 
 ### Input Features (15 total)
 
@@ -151,7 +160,9 @@ The model was trained on Indian energy sector historical data combining climate 
 | `Volatility_Change` | Change in volatility |
 
 ### Output
-- **Predicted Close Price (₹)** — used to determine trend (Bullish/Bearish/Neutral) and confidence
+- **Predicted Close Price (₹)** — from XGBoost regressor
+- **Trend (Bullish/Bearish/Neutral)** — from RF classifier
+- **Confidence Score (%)** — from RF classifier's `predict_proba`
 
 ---
 
@@ -369,7 +380,7 @@ PORT=5001
 And update API URLs in frontend pages from `5000` to `5001`.
 
 ### Model file not found
-Ensure `xgb_stock_prediction_model_raw.pkl` is in the **root `Market/` directory** (not inside `backend/`).
+Ensure both `xgb_stock_prediction_model_raw.pkl` and `rf_classifier_20k_model.pkl` are in the **root `Market/` directory** (not inside `backend/`).
 
 ---
 

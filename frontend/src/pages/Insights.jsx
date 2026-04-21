@@ -86,9 +86,9 @@ const Insights = () => {
           }
           .skeleton-line {
             background: linear-gradient(90deg,
-              var(--glass-border) 25%,
-              rgba(255,255,255,0.08) 50%,
-              var(--glass-border) 75%
+              rgba(130, 130, 130, 0.1) 25%,
+              rgba(130, 130, 130, 0.25) 50%,
+              rgba(130, 130, 130, 0.1) 75%
             );
             background-size: 600px 100%;
             animation: shimmer 1.6s infinite linear;
