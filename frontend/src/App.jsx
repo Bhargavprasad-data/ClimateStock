@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { Home, TrendingUp, Lightbulb, Sun, Moon } from 'lucide-react';
+import { Home, TrendingUp, Lightbulb, Sun, Moon, BarChart2 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Prediction from './pages/Prediction';
 import Insights from './pages/Insights';
+import Returns from './pages/Returns';
 import ChatBot from './components/ChatBot';
 
 
@@ -16,6 +17,7 @@ const Sidebar = ({ theme, toggleTheme }) => {
     { name: 'Dashboard', path: '/', icon: <Home size={20} /> },
     { name: 'Prediction', path: '/predict', icon: <TrendingUp size={20} /> },
     { name: 'Insights', path: '/insights', icon: <Lightbulb size={20} /> },
+    { name: 'Returns', path: '/returns', icon: <BarChart2 size={20} /> },
   ];
 
   return (
@@ -75,6 +77,7 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/predict" element={<Prediction />} />
             <Route path="/insights" element={<Insights />} />
+            <Route path="/returns" element={<Returns />} />
           </Routes>
         </main>
         <ChatBot />

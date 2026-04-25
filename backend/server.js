@@ -239,6 +239,90 @@ app.get('/api/dashboard', async (req, res) => {
   }
 });
 
+// Fetch historical stock data for Returns page
+app.get('/api/stock-history', async (req, res) => {
+  try {
+    const { company_id, period } = req.query;
+    const cid = company_id ? parseInt(company_id) : 1;
+
+    let intervalStr = '1 year';
+    if (period === '1d') intervalStr = '3 days'; // A few days to ensure we have a start point
+    else if (period === '1m') intervalStr = '1 month';
+    else if (period === '3m') intervalStr = '3 months';
+    else if (period === '6m') intervalStr = '6 months';
+    else if (period === '1y') intervalStr = '1 year';
+
+    // 1. Calculate the same exact streaming offset as the Dashboard to sync the timeline
+    const countRes = await pool.query('SELECT COUNT(*) FROM stock_data WHERE company_id = $1', [cid]);
+    const totalRows = parseInt(countRes.rows[0].count) || 100;
+    const elapsedSeconds = Math.floor((Date.now() - START_TIME) / 8000);
+    let offset = elapsedSeconds % (totalRows > 30 ? totalRows - 30 : 1);
+
+    // 2. The "current day" for the user is the end of the 30-day window shown on the Dashboard
+    const latestRes = await pool.query(
+      'SELECT date FROM stock_data WHERE company_id = $1 ORDER BY date ASC LIMIT 1 OFFSET $2',
+      [cid, offset + 29]
+    );
+
+    if (latestRes.rowCount === 0) {
+      return res.json({ data: [], metrics: null });
+    }
+    const maxDate = latestRes.rows[0].date;
+
+    const query = `
+      SELECT date, open_price, high_price, low_price, close_price
+      FROM stock_data
+      WHERE company_id = $1 
+      AND date >= ($2::date - INTERVAL '${intervalStr}')::date
+      AND date <= $2::date
+      ORDER BY date ASC
+    `;
+    const result = await pool.query(query, [cid, maxDate]);
+
+    let chartData = result.rows.map(row => ({
+      dateStr: new Date(row.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      fullDate: new Date(row.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
+      date: row.date,
+      open: parseFloat(row.open_price),
+      high: parseFloat(row.high_price),
+      low: parseFloat(row.low_price),
+      close: parseFloat(row.close_price)
+    }));
+
+    if (chartData.length === 0) {
+      return res.json({ data: [], metrics: null });
+    }
+
+    const latest = chartData[chartData.length - 1];
+    
+    // For 1D, we specifically want the point from exactly 1 day ago (or nearest previous)
+    let startPoint = chartData[0];
+    if (period === '1d' && chartData.length > 1) {
+       startPoint = chartData[chartData.length - 2]; 
+       // Only send the last two points for the 1D chart to draw a simple line
+       chartData = [startPoint, latest];
+    }
+
+    const returnPct = startPoint.close > 0 ? ((latest.close - startPoint.close) / startPoint.close) * 100 : 0;
+    const priceChange = latest.close - startPoint.close;
+
+    res.json({
+      data: chartData,
+      metrics: {
+        latestPrice: latest.close,
+        open: latest.open,
+        high: latest.high,
+        low: latest.low,
+        priceChange: priceChange,
+        returnPct: returnPct
+      }
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch stock history' });
+  }
+});
+
 // Predict API
 app.post('/api/predict', async (req, res) => {
   const { temperature, heatwave_flag, company_id } = req.body;
@@ -373,6 +457,34 @@ app.post('/api/predict', async (req, res) => {
       let vol = 0.0150 + (Math.abs(30 - parseFloat(temperature)) * 0.0015);
       if (heatwave_flag) vol += 0.0250;
 
+      // ── Period returns (1D, 1M, 3M, 6M, 1Y) ──────────────────────────────
+      let periodReturns = { d1: null, m1: null, m3: null, m6: null, y1: null };
+      if (company_id) {
+        try {
+          const intervals = [
+            { key: 'd1', interval: "1 day"   },
+            { key: 'm1', interval: "1 month" },
+            { key: 'm3', interval: "3 months"},
+            { key: 'm6', interval: "6 months"},
+            { key: 'y1', interval: "1 year"  }
+          ];
+          for (const { key, interval } of intervals) {
+            const hQ = await pool.query(
+              `SELECT close_price FROM stock_data
+               WHERE company_id = $1 AND date <= (NOW() - INTERVAL '${interval}')::date
+               ORDER BY date DESC LIMIT 1`,
+              [parseInt(company_id)]
+            );
+            if (hQ.rows.length > 0) {
+              const hp = parseFloat(hQ.rows[0].close_price);
+              if (hp > 0) periodReturns[key] = ((predictedPrice - hp) / hp) * 100;
+            }
+          }
+        } catch (prErr) {
+          console.warn('Period returns fetch error:', prErr.message);
+        }
+      }
+
       res.json({
         prediction: predictedPrice,
         trend: trend,
@@ -380,7 +492,8 @@ app.post('/api/predict', async (req, res) => {
         returnPct: returnPct,
         volatility: vol,
         rfProbabilities: rfProbabilities,
-        fundamentals: output.fundamentals
+        fundamentals: output.fundamentals,
+        periodReturns: periodReturns
       });
 
     } catch (parseError) {

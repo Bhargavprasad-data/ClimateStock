@@ -13,6 +13,7 @@ const Prediction = () => {
   const [error, setError] = useState(null);
   const [userInteracted, setUserInteracted] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [selectedPeriod, setSelectedPeriod] = useState('d1');
 
   // Weather state
   const [weather, setWeather] = useState(null);
@@ -212,7 +213,49 @@ const Prediction = () => {
           from { opacity: 0; transform: translateY(-6px); }
           to   { opacity: 1; transform: translateY(0); }
         }
+        @keyframes return-flip {
+          0%   { opacity: 0; transform: translateY(8px) scale(0.95); }
+          100% { opacity: 1; transform: translateY(0)  scale(1); }
+        }
         .weather-block { animation: weather-in 0.4s ease both; }
+        .period-tab-row {
+          display: flex;
+          gap: 6px;
+          background: var(--glass-bg);
+          border: 1px solid var(--glass-border);
+          border-radius: 10px;
+          padding: 4px;
+        }
+        .period-tab {
+          flex: 1;
+          padding: 6px 0;
+          border: none;
+          border-radius: 7px;
+          background: transparent;
+          color: var(--color-text-secondary);
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          letter-spacing: 0.04em;
+          transition: all 0.18s ease;
+        }
+        .period-tab:hover {
+          background: rgba(255,255,255,0.06);
+          color: var(--color-text-primary);
+        }
+        .period-tab.active {
+          background: var(--color-accent);
+          color: #000;
+          box-shadow: 0 2px 8px rgba(0,240,255,0.25);
+        }
+        .period-tab.active.bearish-tab {
+          background: var(--color-bearish);
+          color: #fff;
+          box-shadow: 0 2px 8px rgba(239,68,68,0.3);
+        }
+        .return-display {
+          animation: return-flip 0.25s cubic-bezier(0.34,1.56,0.64,1) both;
+        }
         .live-dot {
           display: inline-block;
           width: 7px; height: 7px;
@@ -527,7 +570,7 @@ const Prediction = () => {
                   Trend is <span className={result.trend === 'Bullish' ? 'text-bullish' : result.trend === 'Bearish' ? 'text-bearish' : ''}>{result.trend}</span>
                 </h3>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', width: '100%', textAlign: 'left', marginBottom: '24px', background: 'var(--glass-bg)', padding: '24px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', width: '100%', textAlign: 'left', marginBottom: '24px', background: 'var(--glass-bg)', padding: '24px', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
                   <div>
                     <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Thermometer size={14} /> Temp
@@ -548,15 +591,6 @@ const Prediction = () => {
 
                   <div>
                     <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <TrendingUp size={14} /> Return
-                    </div>
-                    <div style={{ fontSize: '20px', color: result.returnPct >= 0 ? 'var(--color-bullish)' : 'var(--color-bearish)' }}>
-                      {result.returnPct > 0 ? '+' : ''}{(result.returnPct || 0).toFixed(2)} %
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <AlertTriangle size={14} /> Volatility <span style={{fontSize: '10px', opacity: 0.7}}>(Range: 0 to 1)</span>
                     </div>
                     <div style={{ fontSize: '20px', color: 'var(--color-text-primary)', display: 'flex', alignItems: 'baseline', gap: '8px' }}>
@@ -566,6 +600,105 @@ const Prediction = () => {
                       {result.returnPct >= 0 ? 'Low Risk (Stable, Min Range)' : 'High Risk (Unstable, Max Range)'}
                     </div>
                   </div>
+
+                  {/* ── Return: period selector ── */}
+                  <div style={{ gridColumn: 'span 3' }}>
+                    <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <TrendingUp size={14} /> Return
+                    </div>
+
+                    {/* Period selector tabs */}
+                    {(() => {
+                      const pr = result.periodReturns || {};
+                      const periods = [
+                        { key: 'd1', label: '1D',  full: '1 Day'   },
+                        { key: 'm1', label: '1M',  full: '1 Month' },
+                        { key: 'm3', label: '3M',  full: '3 Months'},
+                        { key: 'm6', label: '6M',  full: '6 Months'},
+                        { key: 'y1', label: '1Y',  full: '1 Year'  },
+                      ];
+
+                      // Map 'd1' → result.returnPct (vs base), others from periodReturns
+                      const getValue = (key) => {
+                        if (key === 'd1') return result.returnPct ?? null;
+                        return pr[key] ?? null;
+                      };
+
+                      const activeVal  = getValue(selectedPeriod);
+                      const activeFull = periods.find(p => p.key === selectedPeriod)?.full || '';
+                      const isNull  = activeVal === null || activeVal === undefined;
+                      const isUp    = !isNull && activeVal >= 0;
+
+                      return (
+                        <>
+                          {/* Tab row */}
+                          <div className="period-tab-row" style={{ marginBottom: '14px' }}>
+                            {periods.map(({ key, label }) => {
+                              const v = getValue(key);
+                              const tabUp = v !== null && v >= 0;
+                              const isActive = selectedPeriod === key;
+                              return (
+                                <button
+                                  key={key}
+                                  className={`period-tab${isActive ? ` active${!tabUp && v !== null ? ' bearish-tab' : ''}` : ''}`}
+                                  onClick={() => setSelectedPeriod(key)}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Single return display */}
+                          <div key={selectedPeriod} className="return-display" style={{
+                            padding: '16px 20px',
+                            borderRadius: '12px',
+                            background: isNull
+                              ? 'var(--glass-bg)'
+                              : isUp
+                                ? 'rgba(16,185,129,0.08)'
+                                : 'rgba(239,68,68,0.08)',
+                            border: `1px solid ${isNull
+                              ? 'var(--glass-border)'
+                              : isUp
+                                ? 'rgba(16,185,129,0.3)'
+                                : 'rgba(239,68,68,0.3)'}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between'
+                          }}>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginBottom: '4px', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                                {activeFull} Return
+                              </div>
+                              <div style={{ fontSize: '28px', fontWeight: 800, fontFamily: 'var(--font-secondary)', color: isNull ? 'var(--color-text-secondary)' : isUp ? 'var(--color-bullish)' : 'var(--color-bearish)' }}>
+                                {isNull ? '— %' : `${isUp ? '+' : ''}${activeVal.toFixed(2)}%`}
+                              </div>
+                            </div>
+                            <div style={{
+                              width: '48px', height: '48px', borderRadius: '50%',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              background: isNull
+                                ? 'var(--glass-bg)'
+                                : isUp
+                                  ? 'rgba(16,185,129,0.15)'
+                                  : 'rgba(239,68,68,0.15)',
+                              fontSize: '22px'
+                            }}>
+                              {isNull ? '—' : isUp ? '▲' : '▼'}
+                            </div>
+                          </div>
+
+                          {isNull && (
+                            <p style={{ margin: '8px 0 0', fontSize: '11px', color: 'var(--color-text-secondary)', opacity: 0.7 }}>
+                              No historical data available for this period.
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+
                 </div>
 
                 <div style={{ color: 'var(--color-text-secondary)', width: '100%', textAlign: 'left', background: 'var(--glass-bg)', padding: '16px 20px', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
