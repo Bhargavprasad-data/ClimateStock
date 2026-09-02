@@ -1,4 +1,4 @@
-# 🌡️ ClimateStock India — Climate-Finance Predictor
+# 🌡️ ClimateStock India — Climate-Finance Predictor..
 
 > A full-stack, production-grade web application that correlates **Indian regional climate data** (temperature, heatwave events) with **energy sector stock performance**, featuring real-time XGBoost ML predictions, AI chatbot, and live PostgreSQL dashboards.
 ---
