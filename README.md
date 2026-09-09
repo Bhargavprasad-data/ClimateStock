@@ -52,8 +52,6 @@ Market/
 └── README.md                       # This file
 ```
 
----
-
 ## 🛠️ Tech Stack
 
 ### Backend
