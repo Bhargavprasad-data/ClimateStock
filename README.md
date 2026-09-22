@@ -121,7 +121,7 @@ The PostgreSQL database `Stockmarket` has three core tables:
 
 ---
 
-## 🤖 ML Models — Dual-Model Architecture
+## 🤖 ML Models — Dual-Model Architecture.
 
 The prediction engine uses **two complementary ML models** working together:
 
